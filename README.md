@@ -91,8 +91,17 @@ sem certificado, sem domínio e sem balanceador — e os palpites ficam no
 **DynamoDB**, porque no Lambda não existe disco que sobreviva de uma requisição
 para a outra.
 
-Precisa da [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-configurada (`aws configure`). Então, de dentro desta pasta:
+Antes de rodar, três coisas precisam estar prontas:
+
+1. **uma conta na AWS** (o cadastro pede um cartão, mesmo no plano gratuito);
+2. **a AWS CLI instalada** — no macOS, `brew install awscli`;
+3. **a CLI conectada na conta**, com `aws configure`. Ela pede uma Access Key e
+   uma Secret Key, que saem do **IAM → Users → seu usuário → Security
+   credentials → Create access key**, escolhendo o uso "Command Line Interface".
+   Não use as chaves da conta raiz: crie um usuário no IAM para isso.
+
+O script confere esses três pontos e diz qual está faltando, em vez de falhar
+com erro da AWS. Então, de dentro desta pasta:
 
 ```bash
 SITE=https://seu-site.vercel.app ADMIN_TOKEN=uma-senha ./aws/implantar.sh
