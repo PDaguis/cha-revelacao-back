@@ -91,12 +91,28 @@ sem certificado, sem domínio e sem balanceador — e os palpites ficam no
 **DynamoDB**, porque no Lambda não existe disco que sobreviva de uma requisição
 para a outra.
 
-Precisa da [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-configurada (`aws configure`). Então, de dentro desta pasta:
+Antes de rodar, três coisas precisam estar prontas:
+
+1. **uma conta na AWS** (o cadastro pede um cartão, mesmo no plano gratuito);
+2. **a AWS CLI instalada** — no macOS, `brew install awscli`;
+3. **a CLI conectada na conta**, com `aws configure`. Ela pede uma Access Key e
+   uma Secret Key, que saem do **IAM → Users → seu usuário → Security
+   credentials → Create access key**, escolhendo o uso "Command Line Interface".
+   Não use as chaves da conta raiz: crie um usuário no IAM para isso.
+
+O script confere esses três pontos e diz qual está faltando, em vez de falhar
+com erro da AWS. Então, de dentro desta pasta:
 
 ```bash
 SITE=https://seu-site.vercel.app ADMIN_TOKEN=uma-senha ./aws/implantar.sh
 ```
+
+A região padrão é `us-east-2` (Ohio). Isso não é à toa: contas novas do plano
+gratuito da AWS entram numa organização com uma política que só libera a região
+escolhida no cadastro, e tentar em outra dá `AccessDeniedException` com
+`explicit deny in a service control policy` — erro que nenhuma permissão do IAM
+resolve. Para usar outra região, passe `REGIAO=` e confirme antes que ela está
+liberada.
 
 O script cria a tabela, o papel do IAM com permissão só nela, a função e o
 endereço público — e imprime no fim a linha pronta para colar no `config.js` do

@@ -8,15 +8,36 @@
 
 set -euo pipefail
 
-REGIAO="${REGIAO:-us-east-1}"
+REGIAO="${REGIAO:-us-east-2}"   # a região liberada na nossa conta
 FUNCAO="${FUNCAO:-cha-revelacao-api}"
 TABELA="${TABELA:-cha-revelacao-votos}"
 PAPEL="${PAPEL:-cha-revelacao-lambda}"
 SITE="${SITE:-*}"                      # endereço do site na Vercel, para o CORS
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"         # senha do DELETE; vazio desliga a rota
 
-conta=$(aws sts get-caller-identity --query Account --output text)
-echo "conta $conta, região $REGIAO"
+# ---------- confere o que precisa estar pronto ----------
+if ! command -v aws >/dev/null 2>&1; then
+  echo "A AWS CLI não está instalada."
+  echo "No macOS:  brew install awscli"
+  echo "Depois:    aws configure"
+  exit 1
+fi
+
+if ! conta=$(aws sts get-caller-identity --query Account --output text 2>/dev/null); then
+  echo "A AWS CLI está instalada, mas não está conectada na sua conta."
+  echo "Rode:  aws configure"
+  echo "Ela pede a Access Key e a Secret Key de um usuário do IAM."
+  exit 1
+fi
+
+echo "Conta $conta, região $REGIAO."
+echo "Vou criar (ou atualizar, se já existir):"
+echo "  tabela  $TABELA  — onde os palpites ficam guardados"
+echo "  papel   $PAPEL  — a permissão da função, só nessa tabela"
+echo "  função  $FUNCAO  — a API"
+echo "  um endereço HTTPS público para ela"
+echo
+[ "$SITE" = "*" ] && echo "Aviso: sem SITE, o CORS fica aberto para qualquer site." && echo
 
 # ---------- 1. a tabela dos palpites ----------
 if aws dynamodb describe-table --table-name "$TABELA" --region "$REGIAO" >/dev/null 2>&1; then
