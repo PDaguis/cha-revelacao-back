@@ -1,35 +1,18 @@
 /* Chá Revelação — servidor dos palpites.
-   Node puro, sem dependência nenhuma. Sobe com: node server.js */
+   Node puro, sem dependência nenhuma. Sobe com: node server.js
+
+   As regras vivem em regras.js e os palpites num arquivo JSON, então este
+   arquivo é só a parte de HTTP. No Lambda, quem faz esse papel é o
+   lambda.mjs, com as mesmas regras e o DynamoDB no lugar do arquivo. */
 
 import { createServer } from 'node:http';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { conferir, resumo, JA_VOTOU } from './regras.js';
+import * as armazem from './armazens/arquivo.js';
 
 const PORTA = process.env.PORT || 3000;
-const ARQUIVO = resolve(process.env.DATA_FILE || './dados/votos.json');
-const ORIGEM = process.env.CORS_ORIGIN || '*';      // em produção, o endereço do site
-const SENHA = process.env.ADMIN_TOKEN || '';        // sem senha, o apagar fica desligado
-const LIMITE_DE_VOTOS = 2000;                       // só para o arquivo não crescer sem fim
-const ESCOLHAS = ['menino', 'menina'];
+const ORIGEM = process.env.CORS_ORIGIN || '*';   // em produção, o endereço do site
+const SENHA = process.env.ADMIN_TOKEN || '';     // sem senha, o apagar fica desligado
 
-let votos = carregar();
-
-/* ---------- os palpites ficam num arquivo JSON ---------- */
-function carregar() {
-  try {
-    const lido = JSON.parse(readFileSync(ARQUIVO, 'utf8'));
-    return Array.isArray(lido) ? lido : [];
-  } catch {
-    return []; // primeira vez: ainda não existe arquivo
-  }
-}
-
-function salvar() {
-  mkdirSync(dirname(ARQUIVO), { recursive: true });
-  writeFileSync(ARQUIVO, JSON.stringify(votos, null, 2));
-}
-
-/* ---------- respostas ---------- */
 function responder(res, status, corpo) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -50,26 +33,6 @@ async function lerCorpo(req) {
   return JSON.parse(bruto || '{}');
 }
 
-/* ---------- regras do palpite ---------- */
-function conferir(dados) {
-  const nome = String(dados?.nome ?? '').trim().replace(/\s+/g, ' ');
-  const escolha = String(dados?.escolha ?? '').trim().toLowerCase();
-
-  if (nome.length < 2) return { erro: 'diga o seu nome' };
-  if (nome.length > 60) return { erro: 'nome comprido demais' };
-  if (!ESCOLHAS.includes(escolha)) return { erro: 'a escolha deve ser menino ou menina' };
-
-  // a hora quem manda é o servidor, não o aparelho do convidado
-  return { voto: { nome, escolha, em: new Date().toISOString() } };
-}
-
-function resumo() {
-  const menino = votos.filter((v) => v.escolha === 'menino').length;
-  const menina = votos.filter((v) => v.escolha === 'menina').length;
-  return { total: menino + menina, menino, menina };
-}
-
-/* ---------- rotas ---------- */
 const servidor = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const rota = `${req.method} ${url.pathname.replace(/\/$/, '') || '/'}`;
@@ -77,34 +40,36 @@ const servidor = createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') return responder(res, 204, {});
 
-    if (rota === 'GET /') return responder(res, 200, { ok: true, ...resumo() });
+    if (rota === 'GET /') {
+      return responder(res, 200, { ok: true, ...resumo(await armazem.listar()) });
+    }
 
-    if (rota === 'GET /votos') return responder(res, 200, votos);
+    if (rota === 'GET /votos') return responder(res, 200, await armazem.listar());
 
     if (rota === 'POST /votos') {
       const { voto, erro } = conferir(await lerCorpo(req));
       if (erro) return responder(res, 400, { erro });
 
-      // mesmo nome votando de novo: troca o palpite anterior
-      const anteriores = votos.filter((v) => v.nome.toLowerCase() !== voto.nome.toLowerCase());
-      if (anteriores.length >= LIMITE_DE_VOTOS) {
-        return responder(res, 507, { erro: 'chegamos no limite de palpites' });
+      try {
+        const votos = await armazem.guardar(voto);
+        console.log(`palpite: ${voto.nome} → ${voto.escolha} (${votos.length} no total)`);
+        return responder(res, 201, votos); // devolve a lista já atualizada
+      } catch (falha) {
+        if (falha.message === JA_VOTOU) {
+          return responder(res, 409, { erro: 'esse nome já deu um palpite' });
+        }
+        if (falha.message === 'limite') {
+          return responder(res, 507, { erro: 'chegamos no limite de palpites' });
+        }
+        throw falha;
       }
-
-      votos = [...anteriores, voto];
-      salvar();
-      console.log(`palpite: ${voto.nome} → ${voto.escolha} (${resumo().total} no total)`);
-      return responder(res, 201, votos); // devolve a lista já atualizada
     }
 
     if (rota === 'DELETE /votos') {
       if (!SENHA || url.searchParams.get('senha') !== SENHA) {
         return responder(res, 403, { erro: 'senha inválida' });
       }
-      const apagados = votos.length;
-      votos = [];
-      salvar();
-      return responder(res, 200, { ok: true, apagados });
+      return responder(res, 200, { ok: true, apagados: await armazem.apagarTudo() });
     }
 
     responder(res, 404, { erro: 'essa rota não existe' });
@@ -114,7 +79,7 @@ const servidor = createServer(async (req, res) => {
   }
 });
 
-servidor.listen(PORTA, () => {
+servidor.listen(PORTA, async () => {
   console.log(`chá revelação no ar em http://localhost:${PORTA}`);
-  console.log(`palpites guardados em ${ARQUIVO} (${votos.length} até agora)`);
+  console.log(`palpites em ${armazem.onde} (${(await armazem.listar()).length} até agora)`);
 });
