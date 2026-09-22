@@ -114,13 +114,29 @@ fi
 # ---------- 5. o endereço público ----------
 # sem --cors de propósito: quem responde os cabeçalhos é o próprio código,
 # senão eles vêm duplicados e o navegador recusa
-if ! aws lambda get-function-url-config --function-name "$FUNCAO" --region "$REGIAO" >/dev/null 2>&1; then
-  echo "criando o endereço público..."
+echo "acertando o endereço público..."
+if aws lambda get-function-url-config --function-name "$FUNCAO" --region "$REGIAO" >/dev/null 2>&1; then
+  aws lambda update-function-url-config --function-name "$FUNCAO" \
+    --auth-type NONE --region "$REGIAO" >/dev/null
+else
   aws lambda create-function-url-config --function-name "$FUNCAO" \
     --auth-type NONE --region "$REGIAO" >/dev/null
-  aws lambda add-permission --function-name "$FUNCAO" \
-    --statement-id publico --action lambda:InvokeFunctionUrl \
-    --principal '*' --function-url-auth-type NONE --region "$REGIAO" >/dev/null
+fi
+
+# deixa a função ser chamada por qualquer um; se a permissão já existir, a AWS
+# reclama e tudo bem
+aws lambda add-permission --function-name "$FUNCAO" \
+  --statement-id publico --action lambda:InvokeFunctionUrl \
+  --principal '*' --function-url-auth-type NONE --region "$REGIAO" >/dev/null 2>&1 || true
+
+# confere agora, em vez de deixar o 403 aparecer só no celular do convidado
+if ! aws lambda get-policy --function-name "$FUNCAO" --region "$REGIAO" 2>/dev/null \
+     | grep -q InvokeFunctionUrl; then
+  echo
+  echo "A função subiu, mas não consegui deixar o endereço público."
+  echo "Quase sempre é uma política da organização proibindo Function URL"
+  echo "sem autenticação. Sem isso, o site recebe 403 e ninguém vota."
+  exit 1
 fi
 
 endereco=$(aws lambda get-function-url-config --function-name "$FUNCAO" \
