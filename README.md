@@ -107,6 +107,13 @@ com erro da AWS. Então, de dentro desta pasta:
 SITE=https://seu-site.vercel.app ADMIN_TOKEN=uma-senha ./aws/implantar.sh
 ```
 
+A região padrão é `us-east-2` (Ohio). Isso não é à toa: contas novas do plano
+gratuito da AWS entram numa organização com uma política que só libera a região
+escolhida no cadastro, e tentar em outra dá `AccessDeniedException` com
+`explicit deny in a service control policy` — erro que nenhuma permissão do IAM
+resolve. Para usar outra região, passe `REGIAO=` e confirme antes que ela está
+liberada.
+
 O script cria a tabela, o papel do IAM com permissão só nela, a função e o
 endereço público — e imprime no fim a linha pronta para colar no `config.js` do
 front. Pode rodar de novo quantas vezes quiser: nas próximas ele só atualiza o

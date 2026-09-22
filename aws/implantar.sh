@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-REGIAO="${REGIAO:-us-east-1}"
+REGIAO="${REGIAO:-us-east-2}"   # a região liberada na nossa conta
 FUNCAO="${FUNCAO:-cha-revelacao-api}"
 TABELA="${TABELA:-cha-revelacao-votos}"
 PAPEL="${PAPEL:-cha-revelacao-lambda}"
