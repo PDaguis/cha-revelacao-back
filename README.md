@@ -32,10 +32,11 @@ Sobre o `POST`:
   normaliza);
 - o `nome` leva um aperto nos espaços e precisa ter de 2 a 60 letras;
 - a hora (`em`) quem carimba é o servidor, não o aparelho do convidado;
-- **o mesmo nome votando de novo substitui o palpite anterior** — é assim que o
-  botão "Mudar meu palpite" funciona no celular. Vale lembrar que dois
-  convidados com exatamente o mesmo nome contam como uma pessoa só; por isso o
-  tablet pede nome e sobrenome.
+- **um palpite por convidado**: se aquele nome já palpitou, a resposta é `409` e
+  nada muda. A comparação ignora maiúscula, acento e espaço sobrando, então
+  "Vovó Cida", "vovo cida" e "VOVÓ  CIDA" são a mesma pessoa. Por isso o tablet
+  pede nome e sobrenome — e por isso dois convidados de mesmo nome precisam se
+  diferenciar de alguma forma.
 
 Erros voltam como `{ "erro": "..." }` com status 400, 403 ou 404.
 

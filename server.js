@@ -12,6 +12,18 @@ const SENHA = process.env.ADMIN_TOKEN || '';        // sem senha, o apagar fica 
 const LIMITE_DE_VOTOS = 2000;                       // só para o arquivo não crescer sem fim
 const ESCOLHAS = ['menino', 'menina'];
 
+/* Cada convidado palpita uma vez só. Para comparar dois nomes ignoramos
+   acento, espaço sobrando e maiúscula: "Vovó Cida" e "vovo  cida" são a
+   mesma pessoa. */
+function chave(nome) {
+  return nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 let votos = carregar();
 
 /* ---------- os palpites ficam num arquivo JSON ---------- */
@@ -85,13 +97,14 @@ const servidor = createServer(async (req, res) => {
       const { voto, erro } = conferir(await lerCorpo(req));
       if (erro) return responder(res, 400, { erro });
 
-      // mesmo nome votando de novo: troca o palpite anterior
-      const anteriores = votos.filter((v) => v.nome.toLowerCase() !== voto.nome.toLowerCase());
-      if (anteriores.length >= LIMITE_DE_VOTOS) {
+      if (votos.some((v) => chave(v.nome) === chave(voto.nome))) {
+        return responder(res, 409, { erro: 'esse nome já deu um palpite' });
+      }
+      if (votos.length >= LIMITE_DE_VOTOS) {
         return responder(res, 507, { erro: 'chegamos no limite de palpites' });
       }
 
-      votos = [...anteriores, voto];
+      votos = [...votos, voto];
       salvar();
       console.log(`palpite: ${voto.nome} → ${voto.escolha} (${resumo().total} no total)`);
       return responder(res, 201, votos); // devolve a lista já atualizada
