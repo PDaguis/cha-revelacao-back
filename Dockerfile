@@ -4,7 +4,8 @@ FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY package.json server.js ./
+COPY package.json server.js regras.js ./
+COPY armazens ./armazens
 
 # a pasta dos palpites é o ponto de montagem do volume; precisa ser do
 # usuário "node", que é quem roda o servidor

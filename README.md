@@ -4,14 +4,23 @@ Servidor que guarda os palpites do [cha-revelacao-front](../cha-revelacao-front)
 para que todo mundo veja o mesmo placar: quem vota no tablet e quem vota no
 próprio celular depois de escanear o QR Code.
 
-> **A festa vai rodar na Vercel.** Lá a API é a função `api/votos.js`, que fica
-> no repositório do front e guarda os palpites num Redis da Upstash — na Vercel
-> não existe disco que sobreviva entre requisições. Este servidor continua aqui
-> como plano B, para rodar num servidor próprio com Docker. As regras são as
-> mesmas nos dois; mudou uma, mude nos dois.
+> **Na festa, o site fica na Vercel e esta API no Lambda da AWS.** Veja
+> [Subir no Lambda (AWS)](#subir-no-lambda-aws).
 
-Node puro, **sem nenhuma dependência** — nada de `npm install`. Os palpites
-ficam num arquivo JSON.
+Node puro, **sem nenhuma dependência** — nada de `npm install`.
+
+```
+regras.js            as regras do palpite, valem em qualquer lugar
+armazens/arquivo.js  guarda num arquivo JSON  (servidor de casa e Docker)
+armazens/dynamo.js   guarda no DynamoDB       (Lambda)
+server.js            a API como servidor HTTP (casa e Docker)
+lambda.mjs           a API como função da AWS
+aws/implantar.sh     sobe tudo na AWS
+```
+
+As regras ficam num arquivo só, então o Lambda e o servidor do Docker se
+comportam igual: um palpite por nome, escolha só menino ou menina, e a hora
+carimbada pelo servidor.
 
 ## Rodar
 
@@ -66,7 +75,8 @@ node --env-file=.env server.js
 No `config.js` do front, preencha a `apiUrl` com o endereço desta API:
 
 ```js
-apiUrl: 'https://cha-revelacao-back.onrender.com',
+apiUrl: 'https://xxxxxxxx.lambda-url.us-east-1.on.aws',   // no Lambda
+apiUrl: '/api',                                           // com tudo junto no Docker
 ```
 
 A partir daí o site para de guardar no navegador e passa a somar tudo aqui.
@@ -74,10 +84,59 @@ A partir daí o site para de guardar no navegador e passa a somar tudo aqui.
 > Se o site estiver em `https`, a API também precisa estar — o navegador recusa
 > chamar `http` de dentro de uma página `https`.
 
-## Subir com Docker (o jeito recomendado)
+## Subir no Lambda (AWS)
 
-O `docker-compose.yml` sobe as duas metades: o **Caddy** servindo o site e
-repassando `/api` para o **Node**. Um endereço só, o que elimina de uma vez o
+A API vira uma função Lambda com **Function URL** — um endereço HTTPS pronto,
+sem certificado, sem domínio e sem balanceador — e os palpites ficam no
+**DynamoDB**, porque no Lambda não existe disco que sobreviva de uma requisição
+para a outra.
+
+Precisa da [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+configurada (`aws configure`). Então, de dentro desta pasta:
+
+```bash
+SITE=https://seu-site.vercel.app ADMIN_TOKEN=uma-senha ./aws/implantar.sh
+```
+
+O script cria a tabela, o papel do IAM com permissão só nela, a função e o
+endereço público — e imprime no fim a linha pronta para colar no `config.js` do
+front. Pode rodar de novo quantas vezes quiser: nas próximas ele só atualiza o
+código e as variáveis.
+
+Dá para mudar `REGIAO`, `FUNCAO`, `TABELA` e `PAPEL` da mesma forma, por
+variável de ambiente.
+
+**O `SITE` é o CORS.** É o endereço que a API vai aceitar. Se o do site mudar,
+rode o script de novo com o novo — senão o navegador bloqueia as chamadas. Sem
+passar `SITE`, o CORS fica aberto para qualquer origem e o script avisa.
+
+O `ADMIN_TOKEN` é a senha do `DELETE /votos`, para limpar os palpites de teste
+antes da festa:
+
+```bash
+curl -X DELETE "https://SUA-URL.lambda-url.us-east-1.on.aws/votos?senha=SUA_SENHA"
+curl -sS https://SUA-URL.lambda-url.us-east-1.on.aws/votos > palpites.json
+```
+
+Sobre o pacote: o runtime do Node no Lambda **já traz o AWS SDK v3**, então o
+zip leva só os arquivos do projeto — nada de `npm install` nem de camadas.
+
+### Rodar o Lambda na sua máquina
+
+Dá para testar sem AWS nenhuma, com um DynamoDB local em Docker:
+
+```bash
+docker run -d -p 8000:8000 amazon/dynamodb-local
+npm install --no-save @aws-sdk/client-dynamodb   # no Lambda isso já vem pronto
+```
+
+Depois é só chamar o `handler` do `lambda.mjs` com
+`AWS_ENDPOINT_URL_DYNAMODB=http://localhost:8000` e credenciais de mentira.
+
+## Subir com Docker (plano B)
+
+Se um dia preferir tudo num servidor próprio, o `docker-compose.yml` sobe as
+duas metades: o **Caddy** servindo o site e repassando `/api` para o **Node**. Um endereço só, o que elimina de uma vez o
 CORS e a mistura de `http` com `https` — e o certificado é emitido e renovado
 sozinho.
 
