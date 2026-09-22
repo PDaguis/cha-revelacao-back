@@ -113,43 +113,59 @@ else
 fi
 
 # ---------- 5. o endereço público ----------
-# sem --cors de propósito: quem responde os cabeçalhos é o próprio código,
-# senão eles vêm duplicados e o navegador recusa
-echo "acertando o endereço público..."
-if aws lambda get-function-url-config --function-name "$FUNCAO" --region "$REGIAO" >/dev/null 2>&1; then
-  aws lambda update-function-url-config --function-name "$FUNCAO" \
-    --auth-type NONE --region "$REGIAO" >/dev/null
+# Nesta conta a Function URL pública é proibida pela organização (403 antes
+# mesmo de a função rodar), então o endereço vem de um HTTP API do API Gateway.
+# Sem configurar CORS aqui de propósito: quem responde os cabeçalhos é o
+# próprio código, e duplicado o navegador recusa.
+API_NOME="${API_NOME:-cha-revelacao}"
+
+funcao_arn=$(aws lambda get-function --function-name "$FUNCAO" --region "$REGIAO" \
+  --query Configuration.FunctionArn --output text)
+
+api_id=$(aws apigatewayv2 get-apis --region "$REGIAO" \
+  --query "Items[?Name=='$API_NOME'].ApiId | [0]" --output text)
+
+if [ "$api_id" = "None" ] || [ -z "$api_id" ]; then
+  echo "criando o API Gateway $API_NOME..."
+  api_id=$(aws apigatewayv2 create-api --name "$API_NOME" --protocol-type HTTP \
+    --target "$funcao_arn" --region "$REGIAO" --query ApiId --output text)
 else
-  aws lambda create-function-url-config --function-name "$FUNCAO" \
-    --auth-type NONE --region "$REGIAO" >/dev/null
+  echo "usando o API Gateway $API_NOME ($api_id)"
 fi
 
-# deixa a função ser chamada por qualquer um; se a permissão já existir, a AWS
-# reclama e tudo bem
+# deixa o API Gateway chamar a função; se já puder, a AWS reclama e tudo bem
 aws lambda add-permission --function-name "$FUNCAO" \
-  --statement-id publico --action lambda:InvokeFunctionUrl \
-  --principal '*' --function-url-auth-type NONE --region "$REGIAO" >/dev/null 2>&1 || true
+  --statement-id apigateway --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:$REGIAO:$conta:$api_id/*/*" \
+  --region "$REGIAO" >/dev/null 2>&1 || true
 
-# confere agora, em vez de deixar o 403 aparecer só no celular do convidado
-if ! aws lambda get-policy --function-name "$FUNCAO" --region "$REGIAO" 2>/dev/null \
-     | grep -q InvokeFunctionUrl; then
+endereco="https://$api_id.execute-api.$REGIAO.amazonaws.com"
+
+# ---------- 6. confere de fora, como o site vai chamar ----------
+echo "conferindo o endereço..."
+codigo="000"
+for _ in 1 2 3; do
+  codigo=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$endereco/votos" || echo "000")
+  [ "$codigo" = "200" ] && break
+  sleep 3
+done
+
+if [ "$codigo" != "200" ]; then
   echo
-  echo "A função subiu, mas não consegui deixar o endereço público."
-  echo "Quase sempre é uma política da organização proibindo Function URL"
-  echo "sem autenticação. Sem isso, o site recebe 403 e ninguém vota."
+  echo "O endereço respondeu $codigo em vez de 200."
+  echo "A função subiu, mas alguma coisa no caminho está bloqueando a chamada."
   exit 1
 fi
-
-endereco=$(aws lambda get-function-url-config --function-name "$FUNCAO" \
-  --region "$REGIAO" --query FunctionUrl --output text)
-endereco="${endereco%/}"
 
 echo
 echo "API no ar: $endereco"
 echo
-echo "Agora ponha este endereço no config.js do front e publique de novo:"
+echo "Ponha este endereço no config.js do front e publique de novo:"
 echo
 echo "  apiUrl: '$endereco',"
 echo
-[ "$SITE" = "*" ] && echo "Aviso: o CORS está aberto para qualquer site. Rode de novo com
-SITE=https://seu-site.vercel.app para fechar." || true
+if [ "$SITE" = "*" ]; then
+  echo "Aviso: o CORS está aberto para qualquer site."
+  echo "Rode de novo com SITE=https://seu-site.vercel.app para fechar."
+fi

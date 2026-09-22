@@ -115,9 +115,13 @@ resolve. Para usar outra região, passe `REGIAO=` e confirme antes que ela está
 liberada.
 
 O script cria a tabela, o papel do IAM com permissão só nela, a função e o
-endereço público — e imprime no fim a linha pronta para colar no `config.js` do
-front. Pode rodar de novo quantas vezes quiser: nas próximas ele só atualiza o
-código e as variáveis.
+API Gateway — e, antes de terminar, chama o endereço de fora para confirmar que
+responde. No fim imprime a linha pronta para colar no `config.js` do front.
+Pode rodar de novo quantas vezes quiser: nas próximas ele só atualiza o código
+e as variáveis.
+
+O API Gateway é procurado pelo nome (`cha-revelacao` por padrão). Se a sua API
+tiver outro nome, passe `API_NOME=` com ele — senão o script cria uma segunda.
 
 Dá para mudar `REGIAO`, `FUNCAO`, `TABELA` e `PAPEL` da mesma forma, por
 variável de ambiente.
@@ -136,6 +140,30 @@ curl -sS https://SUA-URL.lambda-url.us-east-1.on.aws/votos > palpites.json
 
 Sobre o pacote: o runtime do Node no Lambda **já traz o AWS SDK v3**, então o
 zip leva só os arquivos do projeto — nada de `npm install` nem de camadas.
+
+### Três pegadinhas desta conta AWS
+
+Contas novas do plano gratuito entram numa organização gerenciada pela AWS, com
+políticas que **não dá para contornar por dentro da conta** — nem com
+`AdministratorAccess`, nem com o usuário raiz. Nós esbarramos em duas delas e
+numa terceira que é erro comum. Ficam registradas para ninguém perder tempo de
+novo:
+
+1. **Só a região escolhida no cadastro funciona.** Aqui é `us-east-2` (Ohio).
+   Tentar em qualquer outra dá `AccessDeniedException` com
+   `explicit deny in a service control policy`. É por isso que `REGIAO` já vem
+   com Ohio.
+
+2. **Function URL pública é proibida.** Mesmo com `AuthType NONE` e a permissão
+   de invocação corretamente aplicadas, a chamada volta `403 Forbidden` — e sem
+   log nenhum, porque a função nem chega a rodar. No navegador isso aparece
+   disfarçado de erro de CORS ("No 'Access-Control-Allow-Origin' header"), já
+   que a resposta de recusa não tem os cabeçalhos que a função responderia.
+   A saída foi o API Gateway, que a mesma política não bloqueia.
+
+3. **O `SITE` não pode ter barra no final.** A origem que o navegador envia é
+   `https://site.vercel.app`, sem barra, e a comparação do CORS é literal. O
+   script tira a barra sozinho, mas se você configurar na mão, atenção.
 
 ### Rodar o Lambda na sua máquina
 
