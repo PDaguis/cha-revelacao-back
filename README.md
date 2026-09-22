@@ -68,11 +68,62 @@ A partir daí o site para de guardar no navegador e passa a somar tudo aqui.
 > Se o site estiver em `https`, a API também precisa estar — o navegador recusa
 > chamar `http` de dentro de uma página `https`.
 
-## Publicar
+## Subir com Docker (o jeito recomendado)
 
-Serve qualquer lugar que rode Node ([Render](https://render.com),
-[Railway](https://railway.app), [Fly.io](https://fly.io)). O comando de start é
-`node server.js` e não há build.
+O `docker-compose.yml` sobe as duas metades: o **Caddy** servindo o site e
+repassando `/api` para o **Node**. Um endereço só, o que elimina de uma vez o
+CORS e a mistura de `http` com `https` — e o certificado é emitido e renovado
+sozinho.
+
+No servidor, com Docker instalado e o domínio já apontando para o IP dele:
+
+```bash
+git clone <front> cha-revelacao-front
+git clone <back>  cha-revelacao-back
+cd cha-revelacao-back
+cp .env.example .env     # preencha DOMINIO e ADMIN_TOKEN
+docker compose up -d --build
+```
+
+Os dois repositórios precisam estar **lado a lado**, como estão aqui: o compose
+constrói o site a partir de `../cha-revelacao-front`.
+
+Alguns detalhes que valem saber:
+
+- **os palpites ficam num volume** (`palpites`), então `docker compose restart`,
+  `down`/`up` e deploy novo não apagam nada. Só `down -v` apaga;
+- **a API não fica exposta**: ela não publica porta nenhuma, só é alcançada por
+  dentro, pelo `/api` do Caddy;
+- **o `apiUrl` é forçado para `/api` na hora de montar a imagem do site**, não
+  importa o que esteja no `config.js`. É de propósito: esquecer isso faria o
+  site guardar os palpites em cada navegador, e a festa inteira daria certo em
+  aparência e errado no placar;
+- **o certificado também fica num volume**, para não ser emitido de novo a cada
+  reinício;
+- **suba um container só da API.** Os palpites vivem num arquivo; duas réplicas
+  seriam duas listas separadas.
+
+Para testar na sua máquina antes, sem domínio e sem HTTPS, ponha `DOMINIO=:80`
+no `.env` e abra http://localhost.
+
+### No dia
+
+```bash
+# apagar os palpites de teste
+curl -X DELETE "https://SEU-DOMINIO/api/votos?senha=SEU_ADMIN_TOKEN"
+
+# guardar uma cópia antes da revelação
+curl -sS https://SEU-DOMINIO/api/votos > palpites.json
+
+# ver o que está acontecendo
+docker compose logs -f api
+```
+
+## Publicar sem Docker
+
+Se preferir sem container, serve qualquer lugar que rode Node
+([Render](https://render.com), [Railway](https://railway.app),
+[Fly.io](https://fly.io)). O comando de start é `node server.js` e não há build.
 
 Dois cuidados:
 

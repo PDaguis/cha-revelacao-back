@@ -1,0 +1,40 @@
+# Sobe o chá revelação inteiro: o site (Caddy) e a API (Node).
+#
+#   1. clone os dois repositórios lado a lado, como estão aqui
+#   2. copie .env.example para .env e preencha DOMINIO e ADMIN_TOKEN
+#   3. docker compose up -d --build
+#
+# O site atende nas portas 80 e 443; a API só é alcançada por dentro,
+# pelo /api do Caddy.
+
+name: cha-revelacao
+
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+    volumes:
+      - palpites:/app/dados      # sem isto, um restart apaga os palpites
+    expose:
+      - "3000"
+
+  site:
+    build: ../cha-revelacao-front
+    restart: unless-stopped
+    environment:
+      DOMINIO: ${DOMINIO:-:80}   # domínio de verdade = HTTPS automático
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    volumes:
+      - certificados:/data       # guarda o certificado entre reinícios
+      - caddy:/config
+
+volumes:
+  palpites:
+  certificados:
+  caddy:
