@@ -13,6 +13,7 @@ FUNCAO="${FUNCAO:-cha-revelacao-api}"
 TABELA="${TABELA:-cha-revelacao-votos}"
 PAPEL="${PAPEL:-cha-revelacao-lambda}"
 SITE="${SITE:-*}"                      # endereço do site na Vercel, para o CORS
+SITE="${SITE%/}"                       # sem barra no fim: a origem que o navegador manda não tem
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"         # senha do DELETE; vazio desliga a rota
 
 # ---------- confere o que precisa estar pronto ----------
