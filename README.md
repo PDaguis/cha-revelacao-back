@@ -4,6 +4,12 @@ Servidor que guarda os palpites do [cha-revelacao-front](../cha-revelacao-front)
 para que todo mundo veja o mesmo placar: quem vota no tablet e quem vota no
 próprio celular depois de escanear o QR Code.
 
+> **A festa vai rodar na Vercel.** Lá a API é a função `api/votos.js`, que fica
+> no repositório do front e guarda os palpites num Redis da Upstash — na Vercel
+> não existe disco que sobreviva entre requisições. Este servidor continua aqui
+> como plano B, para rodar num servidor próprio com Docker. As regras são as
+> mesmas nos dois; mudou uma, mude nos dois.
+
 Node puro, **sem nenhuma dependência** — nada de `npm install`. Os palpites
 ficam num arquivo JSON.
 
