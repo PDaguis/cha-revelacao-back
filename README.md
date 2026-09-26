@@ -7,15 +7,20 @@ próprio celular depois de escanear o QR Code.
 > **Na festa, o site fica na Vercel e esta API no Lambda da AWS.** Veja
 > [Subir no Lambda (AWS)](#subir-no-lambda-aws).
 
-Node puro, **sem nenhuma dependência** — nada de `npm install`.
+A API dos palpites é Node puro, **sem nenhuma dependência**. A das fotos leva o
+SDK da AWS preso no pacote, de propósito (veja [As fotos da festa](#as-fotos-da-festa)).
 
 ```
-regras.js            as regras do palpite, valem em qualquer lugar
-armazens/arquivo.js  guarda num arquivo JSON  (servidor de casa e Docker)
-armazens/dynamo.js   guarda no DynamoDB       (Lambda)
-server.js            a API como servidor HTTP (casa e Docker)
-lambda.mjs           a API como função da AWS
-aws/implantar.sh     sobe tudo na AWS
+regras.js               as regras do palpite, valem em qualquer lugar
+armazens/arquivo.js     guarda num arquivo JSON  (servidor de casa e Docker)
+armazens/dynamo.js      guarda no DynamoDB       (Lambda)
+server.js               a API como servidor HTTP (casa e Docker)
+lambda.mjs              a API dos palpites, como função da AWS
+aws/implantar.sh        sobe a votação na AWS
+
+fotos-regras.js         o nome dos arquivos de foto e os limites
+lambda-fotos.mjs        a API das fotos, como função da AWS
+aws/implantar-fotos.sh  sobe as fotos na AWS
 ```
 
 As regras ficam num arquivo só, então o Lambda e o servidor do Docker se
@@ -176,6 +181,76 @@ npm install --no-save @aws-sdk/client-dynamodb   # no Lambda isso já vem pronto
 
 Depois é só chamar o `handler` do `lambda.mjs` com
 `AWS_ENDPOINT_URL_DYNAMODB=http://localhost:8000` e credenciais de mentira.
+
+## As fotos da festa
+
+Uma segunda função, um bucket privado no S3 e **nenhum banco de dados**. Ela
+nunca vê uma foto: assina uma permissão de escrita curta, o celular manda os
+bytes direto para o S3, e depois ela lista o bucket e assina permissões de
+leitura. É por isso que ela é pequena — o trabalho pesado não passa por ela.
+
+```
+POST   /fotos/assinar        { nome, codigo, grande, mini }
+GET    /fotos?cursor=
+DELETE /fotos?chave=&senha=
+```
+
+Sobe assim:
+
+```bash
+SITE=https://eduardaepedro.vercel.app CODIGO=1710 ADMIN_TOKEN=uma-senha \
+  ./aws/implantar-fotos.sh
+```
+
+Ela entra no **mesmo** API Gateway da votação, em rotas próprias (`ANY /fotos` e
+`ANY /fotos/{proxy+}`), que ganham do `$default`. São duas funções de propósito:
+a votação é o que não pode falhar no dia, e código de foto não tem como derrubar
+o que ele nem enxerga. O script confere as duas no fim.
+
+### Por que não tem tabela
+
+O arquivo no S3 é o registro. A chave carrega tudo que a galeria precisa:
+
+```
+f/8209617310-k3f9ab-vovo-cida.jpg    a foto de 1600px
+t/8209617310-k3f9ab-vovo-cida.jpg    a miniatura, mesmo sufixo
+```
+
+O número da frente é o tempo **invertido** (`9999999999 - epoch`). O S3 só
+devolve chave em ordem crescente e não sabe inverter, então guardar o tempo de
+trás para frente faz "mais recente primeiro" sair de graça, com paginação de
+verdade e sem ordenar nada na memória.
+
+A galeria lista só o `t/`, e a foto grande sobe **antes** da miniatura: assim um
+envio que morreu no meio fica invisível em vez de aparecer quebrado. O preço
+disso é o acento, que se perde no nome (`Vovó` vira `vovo`). Para legenda de
+foto de festa, troca justa.
+
+### Quem confere o tamanho é o S3, não este código
+
+A permissão de escrita é um POST assinado com condições dentro da assinatura:
+chave exata, `Content-Type` exato e um intervalo de tamanho. Mentir no pedido
+não adianta — quem recusa é o S3, com `EntityTooLarge` ou `AccessDenied`, antes
+de qualquer byte ser gravado.
+
+### A torneira
+
+O `CODIGO` não é segredo: ele está no `config.js` do site, que é público. Ele
+serve para desligar todos os envios na hora, sem publicar nada:
+
+```bash
+aws lambda update-function-configuration --function-name cha-revelacao-fotos \
+  --environment 'Variables={BUCKET=...,CORS_ORIGIN=...,CODIGO=,ADMIN_TOKEN=...}' \
+  --region us-east-2
+```
+
+Sem `CODIGO`, a função recusa todo envio. Falha fechada, de propósito.
+
+### Depois da festa
+
+```bash
+aws s3 sync s3://cha-revelacao-fotos-SUFIXO ./fotos-da-festa --region us-east-2
+```
 
 ## Subir com Docker (plano B)
 
