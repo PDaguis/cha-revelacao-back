@@ -15,9 +15,9 @@ import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectsCommand 
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import * as regras from './fotos-regras.js';
+import { cabecalhos } from './cors.js';
 
 const BUCKET = process.env.BUCKET || '';
-const ORIGEM = process.env.CORS_ORIGIN || '*';
 const CODIGO = process.env.CODIGO || '';      // vazio desliga os envios de uma vez
 const SENHA = process.env.ADMIN_TOKEN || '';  // sem senha, apagar fica desligado
 
@@ -26,16 +26,10 @@ const VALE_VER = 3600;      // 1 hora para a galeria; o papel do Lambda não dei
 
 const s3 = new S3Client({});
 
-function responder(status, corpo) {
+function responder(evento, status, corpo) {
   return {
     statusCode: status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': ORIGEM,
-      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-      'Cache-Control': 'no-store',
-    },
+    headers: cabecalhos(evento, 'GET, POST, DELETE, OPTIONS'),
     body: JSON.stringify(corpo),
   };
 }
@@ -70,21 +64,21 @@ function permitirLeitura(chave, segundos = VALE_VER) {
 }
 
 async function assinar(evento) {
-  if (!CODIGO) return responder(503, { erro: 'os envios de foto estão desligados' });
+  if (!CODIGO) return responder(evento, 503, { erro: 'os envios de foto estão desligados' });
 
   let corpo;
   try {
     corpo = lerCorpo(evento);
   } catch {
-    return responder(400, { erro: 'não entendi o que veio no pedido' });
+    return responder(evento, 400, { erro: 'não entendi o que veio no pedido' });
   }
 
   if (String(corpo.codigo ?? '') !== CODIGO) {
-    return responder(403, { erro: 'esta página não está valendo para enviar fotos' });
+    return responder(evento, 403, { erro: 'esta página não está valendo para enviar fotos' });
   }
 
   const { pedido, erro } = regras.conferir(corpo);
-  if (erro) return responder(400, { erro });
+  if (erro) return responder(evento, 400, { erro });
 
   const chaves = regras.chaves(pedido.nome);
   const [grande, mini] = await Promise.all([
@@ -94,7 +88,7 @@ async function assinar(evento) {
 
   // a grande vai primeiro de propósito: a galeria lista as miniaturas, então
   // uma foto pela metade fica invisível em vez de aparecer quebrada
-  return responder(200, {
+  return responder(evento, 200, {
     grande: { url: grande.url, campos: grande.fields, chave: chaves.grande },
     mini: { url: mini.url, campos: mini.fields, chave: chaves.mini },
   });
@@ -119,17 +113,17 @@ async function listar(evento) {
     return { chave: item.Key, nome: dados.nome, em: dados.em, mini, grande };
   }));
 
-  return responder(200, { fotos, cursor: lista.NextContinuationToken ?? null });
+  return responder(evento, 200, { fotos, cursor: lista.NextContinuationToken ?? null });
 }
 
 async function apagar(evento) {
   const busca = new URLSearchParams(evento.rawQueryString ?? '');
-  if (!SENHA || busca.get('senha') !== SENHA) return responder(403, { erro: 'senha inválida' });
+  if (!SENHA || busca.get('senha') !== SENHA) return responder(evento, 403, { erro: 'senha inválida' });
 
   const chave = busca.get('chave') ?? '';
   // só apagamos o que tem cara de chave nossa: nada de caminho de fora
   if (!/^t\/\d{10}-[a-z0-9]{6}-[a-z0-9-]+\.jpg$/.test(chave)) {
-    return responder(400, { erro: 'essa chave não é de uma foto' });
+    return responder(evento, 400, { erro: 'essa chave não é de uma foto' });
   }
 
   const { grande } = regras.lerChave(chave);
@@ -138,7 +132,7 @@ async function apagar(evento) {
     Delete: { Objects: [{ Key: chave }, { Key: grande }], Quiet: true },
   }));
 
-  return responder(200, { ok: true, apagada: chave });
+  return responder(evento, 200, { ok: true, apagada: chave });
 }
 
 export const handler = async (evento) => {
@@ -146,22 +140,22 @@ export const handler = async (evento) => {
   const caminho = (evento.rawPath ?? '/').replace(/\/$/, '') || '/';
 
   try {
-    if (metodo === 'OPTIONS') return responder(204, {});
-    if (!BUCKET) return responder(500, { erro: 'falta dizer qual é o bucket' });
+    if (metodo === 'OPTIONS') return responder(evento, 204, {});
+    if (!BUCKET) return responder(evento, 500, { erro: 'falta dizer qual é o bucket' });
 
     if (caminho === '/fotos/assinar') {
-      return metodo === 'POST' ? assinar(evento) : responder(405, { erro: 'só POST aqui' });
+      return metodo === 'POST' ? assinar(evento) : responder(evento, 405, { erro: 'só POST aqui' });
     }
 
     if (caminho === '/fotos') {
       if (metodo === 'GET') return listar(evento);
       if (metodo === 'DELETE') return apagar(evento);
-      return responder(405, { erro: 'só GET ou DELETE aqui' });
+      return responder(evento, 405, { erro: 'só GET ou DELETE aqui' });
     }
 
-    return responder(404, { erro: 'essa rota não existe' });
+    return responder(evento, 404, { erro: 'essa rota não existe' });
   } catch (falha) {
     console.error(falha);
-    return responder(500, { erro: 'deu algo errado aqui dentro' });
+    return responder(evento, 500, { erro: 'deu algo errado aqui dentro' });
   }
 };

@@ -12,7 +12,7 @@ REGIAO="${REGIAO:-us-east-2}"   # a região liberada na nossa conta
 FUNCAO="${FUNCAO:-cha-revelacao-api}"
 TABELA="${TABELA:-cha-revelacao-votos}"
 PAPEL="${PAPEL:-cha-revelacao-lambda}"
-SITE="${SITE:-*}"                      # endereço do site na Vercel, para o CORS
+SITE="${SITE:-*}"                      # origem(ns) para o CORS, separadas por vírgula
 SITE="${SITE%/}"                       # sem barra no fim: a origem que o navegador manda não tem
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"         # senha do DELETE; vazio desliga a rota
 
@@ -86,10 +86,12 @@ aws iam put-role-policy --role-name "$PAPEL" --policy-name palpites --policy-doc
 # ---------- 3. o pacote ----------
 echo "empacotando..."
 rm -f /tmp/cha-revelacao-api.zip
-zip -q /tmp/cha-revelacao-api.zip lambda.mjs regras.js armazens/dynamo.js package.json
+zip -q /tmp/cha-revelacao-api.zip lambda.mjs regras.js cors.js armazens/dynamo.js package.json
 
 # ---------- 4. a função ----------
-ambiente="Variables={TABELA=$TABELA,CORS_ORIGIN=$SITE,ADMIN_TOKEN=$ADMIN_TOKEN}"
+# em JSON, não na sintaxe curta: o CORS_ORIGIN aceita lista separada por
+# vírgula, e vírgula é justamente o que separa as variáveis na forma curta
+ambiente="{\"Variables\":{\"TABELA\":\"$TABELA\",\"CORS_ORIGIN\":\"$SITE\",\"ADMIN_TOKEN\":\"$ADMIN_TOKEN\"}}"
 
 if aws lambda get-function --function-name "$FUNCAO" --region "$REGIAO" >/dev/null 2>&1; then
   echo "atualizando a função $FUNCAO..."

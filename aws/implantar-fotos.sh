@@ -16,7 +16,7 @@ REGIAO="${REGIAO:-us-east-2}"          # a região liberada na nossa conta
 FUNCAO="${FUNCAO:-cha-revelacao-fotos}"
 PAPEL="${PAPEL:-cha-revelacao-fotos}"
 API_NOME="${API_NOME:-cha-revelacao}"  # o mesmo do implantar.sh
-SITE="${SITE:-*}"                      # endereço do site, para o CORS
+SITE="${SITE:-*}"                      # origem(ns) para o CORS, separadas por vírgula
 SITE="${SITE%/}"
 CODIGO="${CODIGO:-}"                   # o código que o site manda; vazio desliga os envios
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"         # senha para apagar foto; vazio desliga
@@ -67,10 +67,19 @@ aws s3api put-public-access-block --bucket "$BUCKET" --region "$REGIAO" \
   --public-access-block-configuration \
   BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 
+# a lista de origens vira um array JSON, uma por uma
+origens_json=""
+IFS=',' read -ra lista_de_origens <<< "$SITE"
+for uma in "${lista_de_origens[@]}"; do
+  uma=$(printf '%s' "$uma" | tr -d '[:space:]')
+  uma="${uma%/}"
+  [ -n "$uma" ] && origens_json="${origens_json:+$origens_json,}\"$uma\""
+done
+
 # o navegador do convidado só consegue mandar a foto se o bucket deixar
 aws s3api put-bucket-cors --bucket "$BUCKET" --region "$REGIAO" --cors-configuration "{
   \"CORSRules\": [{
-    \"AllowedOrigins\": [\"$SITE\"],
+    \"AllowedOrigins\": [$origens_json],
     \"AllowedMethods\": [\"POST\", \"GET\"],
     \"AllowedHeaders\": [\"*\"],
     \"ExposeHeaders\": [\"ETag\"],
@@ -122,11 +131,13 @@ echo "instalando as dependências..."
 npm install --omit=dev --silent
 echo "empacotando..."
 rm -f /tmp/cha-revelacao-fotos.zip
-zip -qr /tmp/cha-revelacao-fotos.zip lambda-fotos.mjs fotos-regras.js package.json node_modules
+zip -qr /tmp/cha-revelacao-fotos.zip lambda-fotos.mjs fotos-regras.js cors.js package.json node_modules
 echo "pacote: $(du -h /tmp/cha-revelacao-fotos.zip | cut -f1)"
 
 # ---------- 4. a função ----------
-ambiente="Variables={BUCKET=$BUCKET,CORS_ORIGIN=$SITE,CODIGO=$CODIGO,ADMIN_TOKEN=$ADMIN_TOKEN}"
+# em JSON, não na sintaxe curta: o CORS_ORIGIN aceita lista separada por
+# vírgula, e vírgula é justamente o que separa as variáveis na forma curta
+ambiente="{\"Variables\":{\"BUCKET\":\"$BUCKET\",\"CORS_ORIGIN\":\"$SITE\",\"CODIGO\":\"$CODIGO\",\"ADMIN_TOKEN\":\"$ADMIN_TOKEN\"}}"
 
 if aws lambda get-function --function-name "$FUNCAO" --region "$REGIAO" >/dev/null 2>&1; then
   echo "atualizando a função $FUNCAO..."
@@ -228,7 +239,7 @@ echo "  codigoFotos: '$CODIGO',"
 echo
 echo "Para desligar os envios na hora, sem publicar nada:"
 echo "  aws lambda update-function-configuration --function-name $FUNCAO \\"
-echo "    --environment 'Variables={BUCKET=$BUCKET,CORS_ORIGIN=$SITE,CODIGO=,ADMIN_TOKEN=$ADMIN_TOKEN}' --region $REGIAO"
+echo "    --environment '{\"Variables\":{\"BUCKET\":\"$BUCKET\",\"CORS_ORIGIN\":\"$SITE\",\"CODIGO\":\"\",\"ADMIN_TOKEN\":\"$ADMIN_TOKEN\"}}' --region $REGIAO"
 echo
 echo "Depois da festa, para baixar tudo:"
 echo "  aws s3 sync s3://$BUCKET ./fotos-da-festa --region $REGIAO"

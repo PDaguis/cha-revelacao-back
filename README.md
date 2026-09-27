@@ -66,8 +66,31 @@ Erros voltam como `{ "erro": "..." }` com status 400, 403 ou 404.
 | ------------- | -------------------- | --------------------------------------------------------- |
 | `PORT`        | `3000`               | porta do servidor                                          |
 | `DATA_FILE`   | `./dados/votos.json` | onde os palpites são gravados                              |
-| `CORS_ORIGIN` | `*`                  | endereço do site; em produção, aponte para o site de vocês |
+| `CORS_ORIGIN` | `*`                  | origens liberadas, separadas por vírgula (veja abaixo)     |
 | `ADMIN_TOKEN` | vazio                | senha do `DELETE`; vazio deixa a rota desligada            |
+
+### Mais de uma origem no CORS
+
+O navegador só aceita **um** valor em `Access-Control-Allow-Origin` — nunca uma
+lista. Então o `CORS_ORIGIN` aceita várias separadas por vírgula e a função
+devolve exatamente a que perguntou, quando ela está na lista:
+
+```bash
+SITE="https://eduardaepedro.vercel.app,http://127.0.0.1:5500" ./aws/implantar.sh
+```
+
+Isso existe para você poder mexer no site na sua máquina sem escolher entre
+desenvolver e derrubar a festa. Origem de fora da lista recebe a primeira, e o
+navegador recusa — que é o certo, e o recado de erro dele diz qual valor veio e
+qual era esperado.
+
+Uma pegadinha: `--environment Variables={A=x,B=y}` usa **vírgula** para separar
+as variáveis, então uma lista de origens quebraria o comando. Por isso os dois
+scripts passam o ambiente em JSON.
+
+E lembre-se de tirar a origem local antes da festa. Ela não é perigosa — CORS
+não protege servidor, protege o navegador de quem visita outro site — mas é
+sujeira que não precisa estar lá no dia.
 
 Tem um `.env.example` aqui do lado. O Node lê `.env` sozinho:
 
