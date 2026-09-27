@@ -275,6 +275,32 @@ Sem `CODIGO`, a função recusa todo envio. Falha fechada, de propósito.
 aws s3 sync s3://cha-revelacao-fotos-SUFIXO ./fotos-da-festa --region us-east-2
 ```
 
+## Zerar tudo, no dia
+
+```bash
+./aws/zerar.sh
+```
+
+É o comando para ter na mão na festa. Ele descobre sozinho o endereço da API e
+o nome do bucket, mostra quantos palpites e quantas fotos existem, **baixa uma
+cópia de tudo** em `copias/zerado-<data>/` e só então apaga. Pede a senha sem
+deixar rastro no histórico do terminal.
+
+A confirmação é digitar **ZERAR** por extenso — um `y` no lugar errado não
+apaga a festa de ninguém. Cancelar não mexe em nada, nem faz cópia.
+
+```bash
+./aws/zerar.sh palpites   # só os palpites
+./aws/zerar.sh fotos      # só as fotos, sem pedir senha
+```
+
+Se a senha estiver errada, ele para antes das fotos: você perde no máximo uma
+tentativa, nunca metade da festa.
+
+Depois de zerar, o painel na TV se acerta sozinho — 4 segundos os palpites, 15
+as fotos. Já os tablets e os celulares continuam lembrando o que fizeram: neles,
+abra o site com `?limpar=1` no fim do endereço.
+
 ## Subir com Docker (plano B)
 
 Se um dia preferir tudo num servidor próprio, o `docker-compose.yml` sobe as

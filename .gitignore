@@ -52,3 +52,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# cópias feitas pelo aws/zerar.sh antes de apagar
+copias/
