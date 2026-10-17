@@ -35,5 +35,6 @@ export function resumo(votos) {
   return { total: menino + menina, menino, menina };
 }
 
-/* Erro combinado entre os armazéns: o nome já palpitou. */
+/* Erros combinados entre os armazéns. */
 export const JA_VOTOU = 'ja-votou';
+export const NAO_EXISTE = 'nao-existe';

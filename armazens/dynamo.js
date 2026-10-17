@@ -5,10 +5,12 @@
 import {
   DynamoDBClient,
   PutItemCommand,
+  UpdateItemCommand,
+  DeleteItemCommand,
   ScanCommand,
   BatchWriteItemCommand,
 } from '@aws-sdk/client-dynamodb';
-import { chave, JA_VOTOU } from '../regras.js';
+import { chave, JA_VOTOU, NAO_EXISTE } from '../regras.js';
 
 const TABELA = process.env.TABELA || 'cha-revelacao-votos';
 
@@ -62,6 +64,39 @@ export async function guardar(voto) {
     throw falha;
   }
 
+  return listar();
+}
+
+/* Troca a escolha de um palpite que já existe. A condição é o contrário da
+   do guardar: aqui a chave TEM que existir, senão um erro de digitação na
+   tela do admin criaria um convidado do nada. */
+export async function trocar(chaveDoVoto, escolha) {
+  try {
+    await cliente.send(new UpdateItemCommand({
+      TableName: TABELA,
+      Key: { chave: { S: chaveDoVoto } },
+      UpdateExpression: 'SET escolha = :e',
+      ExpressionAttributeValues: { ':e': { S: escolha } },
+      ConditionExpression: 'attribute_exists(chave)',
+    }));
+  } catch (falha) {
+    if (falha.name === 'ConditionalCheckFailedException') throw new Error(NAO_EXISTE);
+    throw falha;
+  }
+  return listar();
+}
+
+export async function apagarUm(chaveDoVoto) {
+  try {
+    await cliente.send(new DeleteItemCommand({
+      TableName: TABELA,
+      Key: { chave: { S: chaveDoVoto } },
+      ConditionExpression: 'attribute_exists(chave)',
+    }));
+  } catch (falha) {
+    if (falha.name === 'ConditionalCheckFailedException') throw new Error(NAO_EXISTE);
+    throw falha;
+  }
   return listar();
 }
 

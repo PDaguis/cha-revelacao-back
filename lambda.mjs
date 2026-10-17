@@ -5,7 +5,7 @@
  * operações que o server.js usa.
  */
 
-import { conferir, resumo, JA_VOTOU } from './regras.js';
+import { conferir, resumo, ESCOLHAS, chave as chaveDe, JA_VOTOU, NAO_EXISTE } from './regras.js';
 import * as armazem from './armazens/dynamo.js';
 import { cabecalhos } from './cors.js';
 
@@ -14,7 +14,7 @@ const SENHA = process.env.ADMIN_TOKEN || '';     // sem senha, o apagar fica des
 function responder(evento, status, corpo) {
   return {
     statusCode: status,
-    headers: cabecalhos(evento, 'GET, POST, DELETE, OPTIONS'),
+    headers: cabecalhos(evento, 'GET, POST, PUT, DELETE, OPTIONS'),
     body: JSON.stringify(corpo),
   };
 }
@@ -65,12 +65,57 @@ export const handler = async (evento) => {
       }
     }
 
-    if (metodo === 'DELETE') {
-      const senhaDada = new URLSearchParams(evento.rawQueryString ?? '').get('senha');
-      if (!SENHA || senhaDada !== SENHA) {
+    // PUT e DELETE são do casal, não do convidado: trocam ou tiram palpite
+    // dos outros, então a senha é o que separa um do outro
+    if (metodo === 'PUT' || metodo === 'DELETE') {
+      const busca = new URLSearchParams(evento.rawQueryString ?? '');
+      if (!SENHA || busca.get('senha') !== SENHA) {
         return responder(evento, 403, { erro: 'senha inválida' });
       }
-      return responder(evento, 200, { ok: true, apagados: await armazem.apagarTudo() });
+
+      if (metodo === 'PUT') {
+        let corpo;
+        try {
+          corpo = lerCorpo(evento);
+        } catch {
+          return responder(evento, 400, { erro: 'não entendi o que veio no pedido' });
+        }
+
+        const chave = String(corpo?.chave ?? '').trim();
+        const escolha = String(corpo?.escolha ?? '').trim().toLowerCase();
+        if (!chave) return responder(evento, 400, { erro: 'faltou dizer qual palpite' });
+        if (!ESCOLHAS.includes(escolha)) {
+          return responder(evento, 400, { erro: 'a escolha deve ser menino ou menina' });
+        }
+
+        try {
+          const votos = await armazem.trocar(chave, escolha);
+          console.log(`troca: ${chave} → ${escolha}`);
+          return responder(evento, 200, votos);
+        } catch (falha) {
+          if (falha.message === NAO_EXISTE) {
+            return responder(evento, 404, { erro: 'esse palpite não existe' });
+          }
+          throw falha;
+        }
+      }
+
+      // DELETE sem chave apaga tudo, como sempre fez — é o que o zerar.sh usa
+      const umaChave = (busca.get('chave') ?? '').trim();
+      if (!umaChave) {
+        return responder(evento, 200, { ok: true, apagados: await armazem.apagarTudo() });
+      }
+
+      try {
+        const votos = await armazem.apagarUm(umaChave);
+        console.log(`apagou: ${umaChave}`);
+        return responder(evento, 200, votos);
+      } catch (falha) {
+        if (falha.message === NAO_EXISTE) {
+          return responder(evento, 404, { erro: 'esse palpite não existe' });
+        }
+        throw falha;
+      }
     }
 
     return responder(evento, 405, { erro: 'método não permitido' });
